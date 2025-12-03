@@ -2,10 +2,22 @@ import httpx
 import time
 import logging
 from typing import Any
+from dataclasses import dataclass
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class LeadRoutingData:
+    """Data needed for routing decision and URL personalization."""
+
+    score: float
+    first_name: str | None
+    last_name: str | None
+    email: str | None
+    vsl_source: str | None
 
 
 class ZohoClient:
@@ -117,6 +129,46 @@ class ZohoClient:
         except (ValueError, TypeError):
             logger.warning(f"Could not convert score to float: {score}")
             return None
+
+    async def get_routing_data_for_key(self, key: str) -> LeadRoutingData | None:
+        """
+        Get all data needed for routing and URL personalization.
+
+        Returns LeadRoutingData or None if record not found or score is missing.
+        """
+        settings = get_settings()
+        record = await self.search_record_by_key(key)
+
+        if record is None:
+            return None
+
+        # Extract and validate score
+        score = record.get(settings.zoho_score_field)
+        if score is None:
+            logger.info(f"Score field '{settings.zoho_score_field}' not found or empty")
+            return None
+
+        try:
+            score_float = float(score)
+        except (ValueError, TypeError):
+            logger.warning(f"Could not convert score to float: {score}")
+            return None
+
+        # Extract personalization fields
+        routing_data = LeadRoutingData(
+            score=score_float,
+            first_name=record.get("First_Name"),
+            last_name=record.get("Last_Name"),
+            email=record.get("Email"),
+            vsl_source=record.get(settings.zoho_vsl_source_field),
+        )
+
+        logger.info(
+            f"Routing data for {key}: score={routing_data.score}, "
+            f"vsl_source={routing_data.vsl_source}, email={routing_data.email}"
+        )
+
+        return routing_data
 
 
 # Singleton instance

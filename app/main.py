@@ -1,12 +1,13 @@
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
 from app.zoho_client import zoho_client
+from app.url_builder import build_redirect_url, determine_tier, get_fallback_url
 
 # Configure logging
 logging.basicConfig(
@@ -47,36 +48,37 @@ async def route_by_score(
 async def check_score(
     key: str = Query(..., description="Key to look up in Zoho CRM"),
 ):
-    """Polling endpoint to check if score is available."""
+    """Polling endpoint to check if score is available and return personalized redirect URL."""
     settings = get_settings()
-    thank_you_url = settings.thank_you_page_url or "/thank-you"
+    fallback_url = get_fallback_url()
 
     try:
-        score = await zoho_client.get_score_for_key(key)
-        logger.info(f"Check score for {key}: {score}")
+        lead_data = await zoho_client.get_routing_data_for_key(key)
 
-        if score is not None:
-            # Score found - determine redirect
-            if score >= settings.score_threshold:
-                logger.info(f"Score {score} >= {settings.score_threshold}, ready for success redirect")
-                return {"status": "ready", "redirect_url": settings.success_redirect_url}
-            else:
-                logger.info(f"Score {score} < {settings.score_threshold}, ready for thank you redirect")
-                return {"status": "ready", "redirect_url": thank_you_url}
+        if lead_data is not None:
+            # Determine tier and build redirect URL
+            tier = determine_tier(
+                lead_data.score,
+                settings.sql_threshold,
+                settings.sal_threshold,
+            )
+            redirect_url = build_redirect_url(lead_data, tier)
+
+            logger.info(
+                f"Routing decision for {key}: "
+                f"score={lead_data.score}, tier={tier.value}, "
+                f"vsl_source={lead_data.vsl_source}, redirect={redirect_url}"
+            )
+
+            return {"status": "ready", "redirect_url": redirect_url}
 
         # Score not found yet - keep polling
         logger.info(f"Score not found for {key}, client should keep polling")
-        return {"status": "not_found", "redirect_url": thank_you_url}
+        return {"status": "not_found", "redirect_url": fallback_url}
 
     except Exception as e:
         logger.error(f"Error checking score for {key}: {e}")
-        return {"status": "error", "redirect_url": thank_you_url}
-
-
-@app.get("/thank-you", response_class=HTMLResponse)
-async def thank_you(request: Request):
-    """Display the thank you page."""
-    return templates.TemplateResponse("thank_you.html", {"request": request})
+        return {"status": "error", "redirect_url": fallback_url}
 
 
 @app.get("/health")
