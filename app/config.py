@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     zoho_module_name: str = "Form_Submissions"
     zoho_score_field: str = "Score_Number_V2"
     zoho_key_field: str = "Zoho_Form_Submission_ID"
-    zoho_vsl_source_field: str = "vsl_source"
+    zoho_vsl_source_field: str = "VSL_Source"
 
     # Score tier thresholds
     # SQL: score > sql_threshold (qualified for campaign-specific booking)
