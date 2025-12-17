@@ -3,6 +3,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
@@ -21,6 +24,41 @@ app = FastAPI(
     description="Routes users based on their Zoho CRM score",
     version="1.0.0",
 )
+
+# CORS middleware to allow form submissions from any origin
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class FormSubmission(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    phone: str
+    work_situation: Optional[str] = None
+    goal: Optional[str] = None
+    driving: Optional[str] = None
+    timing: Optional[str] = None
+    investment: Optional[str] = None
+    blocker: Optional[str] = None
+    lead_score: Optional[int] = None
+    time_on_page: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    ip_country: Optional[str] = None
+    user_agent: Optional[str] = None
+    screen_res: Optional[str] = None
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
+    utm_term: Optional[str] = None
+    utm_content: Optional[str] = None
+    vsl_source: Optional[str] = None
 
 # Templates directory
 templates_dir = Path(__file__).parent / "templates"
@@ -85,3 +123,28 @@ async def check_score(
 async def health_check():
     """Health check endpoint for Railway and load balancers."""
     return {"status": "healthy"}
+
+
+@app.post("/backup-submission")
+async def backup_submission(submission: FormSubmission):
+    """Backup endpoint to log form submissions in case Zoho fails."""
+    logger.info("=== BACKUP FORM SUBMISSION ===")
+    logger.info(f"Name: {submission.first_name} {submission.last_name}")
+    logger.info(f"Email: {submission.email}")
+    logger.info(f"Phone: {submission.phone}")
+    logger.info(f"Work Situation: {submission.work_situation}")
+    logger.info(f"Goal: {submission.goal}")
+    logger.info(f"Driving: {submission.driving}")
+    logger.info(f"Timing: {submission.timing}")
+    logger.info(f"Investment: {submission.investment}")
+    logger.info(f"Blocker: {submission.blocker}")
+    logger.info(f"Lead Score: {submission.lead_score}")
+    logger.info(f"Time on Page: {submission.time_on_page}s")
+    logger.info(f"Location: {submission.latitude}, {submission.longitude} ({submission.ip_country})")
+    logger.info(f"User Agent: {submission.user_agent}")
+    logger.info(f"Screen: {submission.screen_res}")
+    logger.info(f"UTM: source={submission.utm_source}, medium={submission.utm_medium}, campaign={submission.utm_campaign}")
+    logger.info(f"VSL Source: {submission.vsl_source}")
+    logger.info("=== END BACKUP ===")
+
+    return {"status": "ok", "message": "Backup received"}
